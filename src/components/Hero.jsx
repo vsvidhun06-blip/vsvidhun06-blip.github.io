@@ -61,7 +61,6 @@ export default function Hero() {
           Vidhun
           <br />
           <span className="italic text-cream-300">Vijayakumar</span> Suja
-          <span className="cursor-blink" />
         </motion.h1>
 
         {/* Tagline */}
