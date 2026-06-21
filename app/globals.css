@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — the single CSS source of truth, mirrored in `lib/theme.ts`.
+ * Monochrome dark theme: near-black background, not pure black.
+ */
+:root {
+  --background: #050505;
+  --surface: #0b0b0b;
+  --border: #1a1a1a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+}
+
+/*
+ * Expose the tokens to Tailwind so utilities like `bg-background`,
+ * `text-muted`, and `border-border` resolve to the variables above.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+}
+
+/* Dark theme is the default and only theme. */
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+  background-color: var(--background);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Consistent, visible focus treatment for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/*
+ * Respect prefers-reduced-motion globally: kill smooth scrolling and collapse
+ * any CSS animation/transition. Framer Motion is handled per-component via
+ * `useReducedMotion()` (typewriter, count-up, and entrance variants).
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
