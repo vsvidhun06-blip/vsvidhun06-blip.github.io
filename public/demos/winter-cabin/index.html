@@ -1,0 +1,872 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Winter Cabin Diorama | WebGPU coursework demo</title>
+    <script src="libraries/jquery-3.7.1.min.js"></script>
+    <script src="libraries/wgpu-matrix.min.js"></script>
+
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+      }
+  
+      body {
+     
+        background-image: url("textures/winter-backdrop.jpg");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-color: #000; /* fallback */
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Buttons on top of the canvas */
+      .ui-button {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        padding: 8px 14px;
+        margin-right: 8px;
+        border-radius: 6px;
+        border: none;
+        background: rgba(0, 0, 0, 0.65);
+        color: #f5f5f5;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        cursor: pointer;
+        z-index: 10;   /* above canvas */
+      }
+
+      #freefallButton {
+        left: auto;
+        right: 16px;
+      }
+
+      .ui-button:hover {
+        background: rgba(0, 0, 0, 0.85);
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- UI buttons -->
+    <button id="toggleRotation" class="ui-button">Stop Rotation</button>
+    <button id="freefallButton" class="ui-button">Freefall</button>
+    <button id="floatButton" class="ui-button" style="top: 60px;">Float</button>
+    <button id="shakeButton" class="ui-button" style="top: 100px;">Shake</button>
+
+    
+
+    <canvas id="canvasElement"></canvas>
+
+    <!-- Portfolio wrapper: navigation, controls hint and WebGPU fallback (added for the portfolio; the original coursework code is unchanged below) -->
+    <style>
+      .pf-bar{position:absolute;left:16px;bottom:16px;right:16px;z-index:20;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;font:13px/1.4 system-ui,sans-serif;color:#eee;pointer-events:none}
+      .pf-bar a,.pf-bar span{pointer-events:auto;background:rgba(0,0,0,.65);padding:8px 12px;border-radius:6px;color:#eee;text-decoration:none}
+      .pf-bar a:hover{background:rgba(0,0,0,.85)}
+      .pf-fallback{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(10,10,11,.92);color:#eee;font:15px/1.6 system-ui,sans-serif;text-align:center}
+      .pf-fallback div{max-width:440px}
+      .pf-fallback a{color:#f2a93b}
+    </style>
+    <div class="pf-bar">
+      <a id="pfBack" href="../../work/webgpu-diorama/">&larr; Back to the case study</a>
+      <script>if (window.self !== window.top) document.getElementById("pfBack").style.display = "none";</script>
+      <span>WASD or arrow keys move &middot; hold left click and drag to look &middot; scroll to zoom</span>
+    </div>
+    <div class="pf-fallback" id="pfFallback" role="alert"><div>
+      <p><strong>This demo needs WebGPU.</strong></p>
+      <p>Your browser did not expose a WebGPU adapter. Recent Chrome or Edge on desktop works. The case study has screenshots of the running scene.</p>
+      <p><a href="../../work/webgpu-diorama/">Return to the case study</a></p>
+    </div></div>
+    <script>
+      (function(){
+        function show(){var f=document.getElementById('pfFallback'); if(f) f.style.display='flex';}
+        if(!('gpu' in navigator)){ show(); return; }
+        navigator.gpu.requestAdapter().then(function(a){ if(!a) show(); }).catch(show);
+      })();
+    </script>
+
+    
+    <!-- Snow effect canvas -->
+    <canvas id="snowCanvas" style="
+     position: absolute;
+     top: 0;
+     left: 0;
+     pointer-events: none;
+     width: 100%;
+     height: 100%;
+     z-index: 5;
+     "></canvas>
+
+    <script type="module">
+      const { vec2, vec3, vec4, mat4 } = wgpuMatrix;
+
+      let indexData;
+      let vertexData;
+      let textureData;
+      let normalData;
+
+      let adapter;
+      let device;
+      let canvas;
+      let canvasWidth;
+      let canvasHeight;
+      let context;
+      let canvasFormat;
+      let vsShaderFile;
+      let fsShaderFile;
+      let vsModule;
+      let fsModule;
+      let vertexBuffer;
+      let colorBuffer;
+      let normalBuffer;
+      let textureBuffer;
+      let indexBuffer;
+      let bindGroupLayout;
+      let pipelineLayout;
+      let bindGroup;
+      let uniformBufferTransformation;
+      let uniformBufferNormalMatrix;
+      let uniformBufferProjection;
+      let uniformBufferView;
+      let uniformBufferLight;
+      let uniformBufferCameraPosition;
+      let modelMatrices;
+      let normalMatrices;
+      let viewMatrix;
+      let projectionMatrix;
+      let angle = 45.0;
+      let pipeline;
+      let renderPassDescriptor;
+      let then = Date.now();
+      let now = 0;
+      let depthStencilTexture;
+      let depthStencilState;
+      let depthStencilView;
+      let depthStencilAttachment;
+
+      // ---- camera + movement ----
+      let cameraPosition = vec3.create(0.0, 0.0, 12.0);
+      let cameraFront    = vec3.create(0.0, 0.0, -1.0);
+      let cameraUp       = vec3.create(0.0, 1.0, 0.0);
+      let cameraSpeed    = 0.5;
+      let keys           = {};
+
+      // mouse look
+      let yaw         = -90.0;
+      let pitch       = 0.0;
+      let sensitivity = 0.15;
+      let isMouseDown = false;   // hold left click to look
+
+      // texture
+      let texture;
+
+      // lighting
+      let light;
+      let ka = 1.0;
+      let ia = vec4.create(0.5, 0.5, 0.5, ka);
+      let kd = 1.0;
+      let id = vec4.create(0.90, 0.90, 0.50, kd);
+      let ks = 0.8;
+      let is = vec4.create(0.90, 0.90, 0.70, ks);
+      let shininess     = vec4.create(40.0, 0.0, 0.0, 0.0);
+      let lightPosition = vec4.create(5.0, 0.0, 20.0, 1.0);
+
+      // rotation + freefall state + float + shake
+      let rotateEnabled = true;
+      let fallEnabled   = false;
+      let floatEnabled = false;
+      let floatTime = 0.0;
+      let shakeEnabled = false;
+      let fallVelocity  = 0.0;   // units / second
+      let fallOffsetY   = 0.0;   // additional Y offset during fall
+      const startFallY  = 15.0;  // start position above screen
+      const targetFallY = -1.0;  // center/ground position
+
+      console.log("Starting WebGPU code (" + Date().toLocaleString() + ").");
+
+      import ObjLoadAndParse from './ObjLoadAndParse.js';
+
+      async function main() {
+
+        async function setup() {
+          console.log("Checking for support, hardware and adapter.");
+          if (!navigator.gpu) {
+            throw new Error("WebGPU not supported by your browser.");
+          }
+
+          adapter = await navigator.gpu.requestAdapter();
+          if (!adapter) {
+            throw new Error("WebGPU Supported but not appropriate hardware.");
+          }
+
+          device = await adapter.requestDevice();
+          if (!device) {
+            throw new Error("Error supporting WebGPU in your browser");
+          }
+
+          console.log("Getting the WebGPU context from our canvas element and configuring it.");
+          canvas = document.querySelector('canvas');
+          context = canvas.getContext('webgpu');
+          canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+          context.configure({
+            device,
+            format: canvasFormat,
+            alphaMode: 'premultiplied',   // allow background image to show through
+          });
+        }
+
+        function create_pipeline() {
+          console.log("Create structures for depth comparison...");
+          depthStencilState = {
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: true,
+            depthCompare: 'less-equal',
+          };
+
+          depthStencilTexture = device.createTexture({
+            size: { width: canvasWidth, height: canvasHeight, depthOrArrayLayers: 1 },
+            format: 'depth24plus-stencil8',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT
+          });
+
+          depthStencilView = depthStencilTexture.createView({
+            format: 'depth24plus-stencil8',
+            dimension: '2d',
+            aspect: 'all',
+          });
+
+          depthStencilAttachment = {
+            view: depthStencilView,
+            depthClearValue: 1.0,
+            depthLoadOp: 'clear',
+            depthStoreOp: 'store',
+            stencilLoadOp: 'clear',
+            stencilStoreOp: 'discard',
+          };
+
+          console.log('Creating pipeline...');
+          pipeline = device.createRenderPipeline({
+            label: 'Hardcoded pipeline',
+            layout: pipelineLayout,
+            vertex: {
+              module: vsModule,
+              entryPoint: 'vs',
+              buffers: [
+                { // positions
+                  arrayStride: 3 * 4,
+                  attributes: [
+                    { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                  ],
+                },
+                { // colors
+                  arrayStride: 4 * 4,
+                  attributes: [
+                    { shaderLocation: 1, offset: 0, format: 'float32x4' },
+                  ],
+                },
+                { // uvs
+                  arrayStride: 2 * 4,
+                  attributes: [
+                    { shaderLocation: 2, offset: 0, format: 'float32x2' },
+                  ],
+                },
+                { // normals
+                  arrayStride: 3 * 4,
+                  attributes: [
+                    { shaderLocation: 3, offset: 0, format: 'float32x3' },
+                  ],
+                }
+              ],
+            },
+            fragment: {
+              module: fsModule,
+              entryPoint: 'fs',
+              targets: [{
+                format: canvasFormat,
+                blend: {
+                  color: {
+                    operation: 'add',
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                  },
+                  alpha: {
+                    operation: 'add',
+                    srcFactor: 'one',
+                    dstFactor: 'one-minus-src-alpha',
+                  }
+                },
+              }],
+            },
+            primitive: {
+              topology: 'triangle-list',
+            },
+            cullMode: 'none',
+            depthStencil: depthStencilState,
+          });
+
+          console.log('Creating Render Pass Descriptor...');
+          renderPassDescriptor = {
+            label: 'Basic canvas render pass',
+            colorAttachments: [
+              {
+                // view: set in render()
+                clearValue: [0.0, 0.0, 0.0, 0.0],
+                loadOp: 'clear',
+                storeOp: 'store',
+              }],
+            depthStencilAttachment: depthStencilAttachment,
+          };
+        }
+
+        async function startup() {
+          console.log("Loading Shader files...");
+          $.ajax({
+            type: "GET",
+            url: "shaders/WinterCabinVS.wgsl",
+            async: false,
+            success: function (response) { vsShaderFile = response; }
+          });
+          $.ajax({
+            type: "GET",
+            url: "shaders/WinterCabinFS.wgsl",
+            async: false,
+            success: function (response) { fsShaderFile = response; }
+          });
+
+          vsModule = device.createShaderModule({
+            label: 'Simple VS ',
+            code: vsShaderFile,
+          });
+          fsModule = device.createShaderModule({
+            label: 'Simple FS ',
+            code: fsShaderFile,
+          });
+
+          console.log('Creating layout for Group...');
+          bindGroupLayout = device.createBindGroupLayout({
+            entries: [{
+              binding: 0,
+              visibility: GPUShaderStage.VERTEX,
+              buffer: {},
+            }, {
+              binding: 1,
+              visibility: GPUShaderStage.VERTEX,
+              buffer: {},
+            }, {
+              binding: 2,
+              visibility: GPUShaderStage.VERTEX,
+              buffer: {},
+            }, {
+              binding: 3,
+              visibility: GPUShaderStage.FRAGMENT,
+              sampler: {}
+            }, {
+              binding: 4,
+              visibility: GPUShaderStage.FRAGMENT,
+              texture: { sampleType: 'float', viewDimension: '2d', multisampled: false, }
+            }, {
+              binding: 5,
+              visibility: GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' }
+            }, {
+              binding: 6,
+              visibility: GPUShaderStage.VERTEX,
+              buffer: {}
+            }, {
+              binding: 7,
+              visibility: GPUShaderStage.VERTEX,
+              buffer: {}
+            }]
+          });
+
+          console.log('Creating pipeline layout...');
+          pipelineLayout = device.createPipelineLayout({
+            bindGroupLayouts: [bindGroupLayout]
+          });
+
+          canvasWidth = canvas.width;
+          canvasHeight = canvas.height;
+          create_pipeline();
+
+          console.log("Gathering vertex, color, index, transformation data...");
+
+          let response = await fetch('textures/WinterCabinTexture.png');
+          let blob = await response.blob();
+          let imageBitmap = await createImageBitmap(blob);
+
+          const objLoadAndParse = new ObjLoadAndParse();
+          const winterCabinFile = await objLoadAndParse.load('meshes/WinterCabinOBJ.obj');
+          const parsedObj = await objLoadAndParse.parse(winterCabinFile);
+
+          vertexData = parsedObj.positions;
+          indexData = parsedObj.indices;
+          textureData = parsedObj.uvs
+          normalData = parsedObj.normals;
+
+          //Each vertex has 3 coordinates (x, y, z)
+          const vertexCount = vertexData.length / 3;
+
+          //Each vertex needs 4 color values 
+          const colorData = new Float32Array(vertexCount * 4);
+
+          modelMatrices = mat4.create();
+          mat4.identity(modelMatrices);
+          modelMatrices = mat4.translate(modelMatrices, [1.0, 1.0, -0.5]);
+          modelMatrices = mat4.rotate(modelMatrices, [0.0, 1.0, 0.0], angle * (Math.PI / 180.0));
+          const uniformData0 = modelMatrices;
+          normalMatrices = mat4.transpose(mat4.inverse(modelMatrices));
+
+          canvasWidth = canvas.width;
+          canvasHeight = canvas.height;
+          projectionMatrix = mat4.perspective(60.0 * Math.PI / 180.0, canvasWidth / canvasHeight, 0.1, 1000.0);
+          const uniformData1 = projectionMatrix;
+
+          viewMatrix = mat4.lookAt(
+            cameraPosition,
+            vec3.add(cameraPosition, cameraFront),
+            cameraUp
+          );
+
+          light = new Float32Array(20);
+          light.set(ia, 0);
+          light.set(id, 4);
+          light.set(is, 8);
+          light.set(shininess, 12);
+          light.set(lightPosition, 16);
+
+          console.log("Creating Buffers...");
+          vertexBuffer = device.createBuffer({
+            label: 'vertex buffer object',
+            size: vertexData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(vertexBuffer, 0, vertexData);
+
+          colorBuffer = device.createBuffer({
+            label: 'color attribute object',
+            size: colorData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(colorBuffer, 0, colorData);
+
+          textureBuffer = device.createBuffer({
+            label: 'texture buffer',
+            size: textureData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(textureBuffer, 0, textureData);
+
+          normalBuffer = device.createBuffer({
+            label: 'normal buffer',
+            size: normalData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(normalBuffer, 0, normalData);
+
+          indexBuffer = device.createBuffer({
+            label: 'index buffer',
+            size: indexData.byteLength,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(indexBuffer, 0, indexData);
+
+          uniformBufferTransformation = device.createBuffer({
+            label: 'uniform buffer transformation',
+            size: uniformData0.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferTransformation, 0, uniformData0);
+
+          uniformBufferNormalMatrix = device.createBuffer({
+            label: 'uniform buffer normal matrix',
+            size: normalMatrices.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferNormalMatrix, 0, normalMatrices);
+
+          uniformBufferProjection = device.createBuffer({
+            label: 'uniform buffer projection',
+            size: projectionMatrix.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferProjection, 0, uniformData1);
+
+          uniformBufferView = device.createBuffer({
+            label: 'uniform buffer view',
+            size: viewMatrix.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferView, 0, viewMatrix);
+
+          texture = device.createTexture({
+            size: [imageBitmap.width, imageBitmap.height],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+          });
+          device.queue.copyExternalImageToTexture(
+            { source: imageBitmap },
+            { texture: texture },
+            [imageBitmap.width, imageBitmap.height]
+          );
+
+          const sampler = device.createSampler({
+            magFilter: 'linear',
+            minFilter: 'linear',
+          });
+
+          uniformBufferLight = device.createBuffer({
+            label: 'uniform buffer light',
+            size: light.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferLight, 0, light);
+
+          uniformBufferCameraPosition = device.createBuffer({
+            label: 'uniform buffer camera position',
+            size: cameraPosition.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+          });
+          device.queue.writeBuffer(uniformBufferCameraPosition, 0, cameraPosition);
+
+          console.log('Creating bind groups...');
+          bindGroup = device.createBindGroup({
+            layout: bindGroupLayout,
+            entries: [{
+              binding: 0,
+              resource: { buffer: uniformBufferTransformation }
+            }, {
+              binding: 1,
+              resource: { buffer: uniformBufferProjection }
+            }, {
+              binding: 2,
+              resource: { buffer: uniformBufferView }
+            }, {
+              binding: 3,
+              resource: sampler
+            }, {
+              binding: 4,
+              resource: texture.createView({ dimension: '2d', })
+            }, {
+              binding: 5,
+              resource: { buffer: uniformBufferLight }
+            }, {
+              binding: 6,
+              resource: { buffer: uniformBufferNormalMatrix }
+            }, {
+              binding: 7,
+              resource: { buffer: uniformBufferCameraPosition }
+            }]
+          });
+
+          console.log('Finish all loading at startup...');
+        }
+
+        function render() {
+          now = Date.now();
+          const deltaTime = now - then;
+          const deltaSeconds = deltaTime / 1000.0;
+          then = now;
+
+          // projection update
+          projectionMatrix = mat4.perspective(60.0 * Math.PI / 180.0, canvasWidth / canvasHeight, 0.1, 1000.0);
+          device.queue.writeBuffer(uniformBufferProjection, 0, projectionMatrix);
+
+          // Camera movement: arrows + WASD
+          cameraSpeed = 0.02 * deltaTime;
+
+          // Calculate right vector once
+          const right = vec3.normalize(vec3.cross(cameraFront, cameraUp));
+
+          // Forward (W or Up Arrow)
+          if (keys[38] || keys[87]) {
+            cameraPosition = vec3.add(cameraPosition, vec3.mulScalar(cameraFront, cameraSpeed));
+          }
+
+          // Backward (S or Down Arrow)
+          if (keys[40] || keys[83]) {
+            cameraPosition = vec3.subtract(cameraPosition, vec3.mulScalar(cameraFront, cameraSpeed));
+          }
+
+          // Left (A or Left Arrow)
+          if (keys[37] || keys[65]) {
+            cameraPosition = vec3.add(cameraPosition, vec3.mulScalar(right, cameraSpeed));
+          }
+
+          // Right (D or Right Arrow)
+          if (keys[39] || keys[68]) {
+            cameraPosition = vec3.subtract(cameraPosition, vec3.mulScalar(right, cameraSpeed));
+          }
+
+          viewMatrix = mat4.lookAt(
+            cameraPosition,
+            vec3.add(cameraPosition, cameraFront),
+            cameraUp
+          );
+          device.queue.writeBuffer(uniformBufferView, 0, viewMatrix);
+          device.queue.writeBuffer(uniformBufferCameraPosition, 0, cameraPosition);
+
+          // Keep background fully transparent so snowy image shows through
+          renderPassDescriptor.colorAttachments[0].clearValue = [0.0, 0.0, 0.0, 0.0];
+          renderPassDescriptor.colorAttachments[0].view =
+            context.getCurrentTexture().createView();
+
+          const encoder = device.createCommandEncoder({ label: 'the encoder' });
+          const pass = encoder.beginRenderPass(renderPassDescriptor);
+          pass.setViewport(0, 0, canvasWidth, canvasHeight, 0, 1);
+          pass.setPipeline(pipeline);
+          device.queue.writeBuffer(uniformBufferLight, 0, light);
+
+          // rotation only when enabled
+          if (rotateEnabled) {
+            angle = angle + 1.0;
+          }
+
+          // freefall physics - starts from above and falls to center
+          let currentY = targetFallY; // default position
+          
+          if (fallEnabled) {
+            const gravity = -9.8; // realistic gravity
+            fallVelocity += gravity * deltaSeconds;
+            fallOffsetY += fallVelocity * deltaSeconds;
+
+            // current Y position during fall
+            currentY = startFallY + fallOffsetY;
+
+            // stop at target (center/ground)
+            if (currentY <= targetFallY) 
+            {
+              currentY = targetFallY;
+              fallVelocity = 0.0;
+              fallEnabled = false;
+            }
+          }
+        
+          let bobbingOffset = 0.0;
+          if (floatEnabled) {
+            const floatSpeed = 2.0;
+            const floatHeight = 0.5;
+            const t = now * 0.002;
+            bobbingOffset = Math.sin(t * floatSpeed) * floatHeight;
+          }
+
+          // tremble animation
+          let shakeX = 0.0;
+          let shakeY = 0.0;
+          if (shakeEnabled) {
+            shakeX = (Math.random() - 0.5) * 0.15;  // small horizontal shake
+            shakeY = (Math.random() - 0.5) * 0.15;  // small vertical shake
+            }
+
+          // model matrix
+          modelMatrices = mat4.create();
+          mat4.identity(modelMatrices);
+          modelMatrices = mat4.scale(modelMatrices, [1.0, 1.0, 1.0]);
+          modelMatrices = mat4.translate(modelMatrices, [0.0, currentY + bobbingOffset, -10.0]);
+          modelMatrices = mat4.translate(modelMatrices, [shakeX, currentY + shakeY, -10.0]);
+
+          modelMatrices = mat4.rotate(modelMatrices, [0.0, 1.0, 0.0], angle * (Math.PI / 180.0));
+          device.queue.writeBuffer(uniformBufferTransformation, 0, modelMatrices);
+          normalMatrices = mat4.transpose(mat4.inverse(modelMatrices));
+          device.queue.writeBuffer(uniformBufferNormalMatrix, 0, normalMatrices);
+
+          pass.setVertexBuffer(0, vertexBuffer);
+          pass.setVertexBuffer(1, colorBuffer);
+          pass.setVertexBuffer(2, textureBuffer);
+          pass.setVertexBuffer(3, normalBuffer);
+          pass.setIndexBuffer(indexBuffer, 'uint32');
+          pass.setBindGroup(0, bindGroup);
+          pass.drawIndexed(indexData.length);
+          pass.end();
+
+          const commandBuffer = encoder.finish();
+          device.queue.submit([commandBuffer]);
+        }
+
+        // ---- start code ----
+        await setup();
+
+        // ---- mouse controls ----
+        const canvasElement = document.getElementById("canvasElement");
+
+        // Left mouse button down: start looking (enter pointer lock)
+        canvasElement.addEventListener("mousedown", (e) => {
+          if (e.button === 0) {           // 0 = left button
+            isMouseDown = true;
+            if (document.pointerLockElement !== canvasElement) {
+              canvasElement.requestPointerLock();
+            }
+          }
+        });
+
+        // Left mouse button up: stop looking (exit pointer lock)
+        document.addEventListener("mouseup", (e) => {
+          if (e.button === 0) {
+            isMouseDown = false;
+            if (document.pointerLockElement === canvasElement) {
+              document.exitPointerLock();
+            }
+          }
+        });
+
+        // Mouse movement while holding left click: rotate camera
+        document.addEventListener("mousemove", (event) => {
+          if (!isMouseDown || document.pointerLockElement !== canvasElement) return;
+
+          const dx = event.movementX;
+          const dy = event.movementY;
+
+          yaw   -= dx * sensitivity;
+          pitch += dy * sensitivity;
+
+          // clamp pitch so we don't flip over
+          pitch = Math.max(-89.0, Math.min(89.0, pitch));
+
+          const radYaw   = yaw * Math.PI / 180.0;
+          const radPitch = pitch * Math.PI / 180.0;
+
+          cameraFront = vec3.create(
+            Math.cos(radYaw) * Math.cos(radPitch),
+            Math.sin(radPitch),
+            Math.sin(radYaw) * Math.cos(radPitch)
+          );
+          cameraFront = vec3.normalize(cameraFront);
+        });
+
+        // Mouse wheel: zoom in/out along cameraFront
+        canvasElement.addEventListener("wheel", (event) => {
+          event.preventDefault(); // stop page scroll
+          const zoomAmount   = -event.deltaY * 0.01;
+          const move         = vec3.mulScalar(cameraFront, zoomAmount);
+          cameraPosition     = vec3.add(cameraPosition, move);
+        }, { passive: false });
+
+        await startup();
+
+        // Button hooks
+        const toggleButton = document.getElementById('toggleRotation');
+        const freefallButton = document.getElementById('freefallButton');
+        const floatButton = document.getElementById("floatButton");
+        const shakeButton = document.getElementById("shakeButton");
+
+        toggleButton.addEventListener('click', () => {
+          rotateEnabled = !rotateEnabled;
+          toggleButton.textContent = rotateEnabled ? 'Stop Rotation' : 'Start Rotation';
+        });
+
+        freefallButton.addEventListener('click', () => {
+          // reset and start fall from above the screen
+          fallEnabled  = true;
+          fallVelocity = 0.0;
+          fallOffsetY  = 0.0; // starts from startFallY position
+        });
+
+        floatButton.addEventListener("click", () => {
+          floatEnabled = !floatEnabled;
+          floatButton.textContent = floatEnabled ? "Stop Float" : "Float";
+        });
+
+        shakeButton.addEventListener("click", () => {
+          shakeEnabled = !shakeEnabled;
+          shakeButton.textContent = shakeEnabled ? "Stop Shake" : "Shake";
+        });
+
+        const UPDATE_INTERVAL = 1000.0 / 30.0;
+        setInterval(render, UPDATE_INTERVAL);
+
+        const observer = new ResizeObserver(entries => {
+          for (const entry of entries) {
+            const canvas = entry.target;
+            const width  = entry.contentBoxSize[0].inlineSize;
+            const height = entry.contentBoxSize[0].blockSize;
+            canvas.width  = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
+            canvas.height = Math.max(1, Math.min(height, device.limits.maxTextureDimension2D));
+            canvasWidth  = canvas.width;
+            canvasHeight = canvas.height;
+            create_pipeline();
+          }
+        });
+        observer.observe(canvasElement);
+
+        $(document).keydown(function (e) {
+          keys[e.which] = true;
+        });
+        $(document).keyup(function (e) {
+          delete keys[e.which];
+        });
+      }
+
+      main();
+    </script>
+  <script>
+
+    class Snowflake {
+      constructor(width, height) {
+        this.reset(width, height);
+      }
+      reset(width, height) {
+        this.x = Math.random() * width;
+        this.y = Math.random() * -height;
+        this.speed = 1 + Math.random() * 2;
+        this.size = 1 + Math.random() * 3;
+        this.wind = (Math.random() - 0.5) * 1.0;
+    }
+    update(width, height) {
+        this.y += this.speed;
+        this.x += this.wind;
+
+        if (this.y > height) this.reset(width, height);
+    }
+}
+
+function startSnowfall() {
+    const canvas = document.getElementById("snowCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    const flakes = [];
+    const COUNT = 200;
+
+    for (let i = 0; i < COUNT; i++) {
+        flakes.push(new Snowflake(canvas.width, canvas.height));
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+
+        for (const flake of flakes) {
+            flake.update(canvas.width, canvas.height);
+            ctx.moveTo(flake.x, flake.y);
+            ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+        }
+
+        ctx.fill();
+        requestAnimationFrame(draw);
+    }
+    draw();
+}
+
+startSnowfall();
+</script>
+
+
+  </body>
+</html>

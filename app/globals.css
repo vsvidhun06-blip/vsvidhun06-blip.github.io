@@ -1,72 +1,334 @@
 @import "tailwindcss";
 
-/*
- * Design tokens — the single CSS source of truth, mirrored in `lib/theme.ts`.
- * Monochrome dark theme: near-black background, not pure black.
- */
-:root {
-  --background: #050505;
-  --surface: #0b0b0b;
-  --border: #1a1a1a;
-  --text: #fafafa;
-  --muted: #a1a1aa;
-}
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/*
- * Expose the tokens to Tailwind so utilities like `bg-background`,
- * `text-muted`, and `border-border` resolve to the variables above.
- */
-@theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-text: var(--text);
-  --color-muted: var(--muted);
-
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
-}
-
-/* Dark theme is the default and only theme. */
-html {
-  scroll-behavior: smooth;
+/* ---------------------------------------------------------------------------
+   Tokens. Dark is the default identity; light is a warm paper variant.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
-  background-color: var(--background);
+  --bg: #0b0b0c;
+  --bg-2: #121214;
+  --bg-3: #19191c;
+  --fg: #ecebe6;
+  --fg-2: #a3a19a;
+  --fg-3: #6b6964;
+  --line: rgba(236, 235, 230, 0.09);
+  --line-2: rgba(236, 235, 230, 0.16);
+  --accent: #f2a93b;
+  --accent-ink: #1a1206;
+  --accent-soft: rgba(242, 169, 59, 0.12);
+  --c-chat: #c9821a;
+  --c-long: #6089ea;
+  --c-shared: #2fa68c;
+  --pos: #2fa68c;
+  --neg: #f0705a;
+  --violet: #b59cf5;
+  --grain-opacity: 0.045;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f2ec;
+  --bg-2: #ebe8e0;
+  --bg-3: #e2ded4;
+  --fg: #151513;
+  --fg-2: #55524b;
+  --fg-3: #8a867d;
+  --line: rgba(21, 21, 19, 0.1);
+  --line-2: rgba(21, 21, 19, 0.18);
+  --accent: #b36a00;
+  --accent-ink: #fff8ec;
+  --accent-soft: rgba(179, 106, 0, 0.1);
+  --c-chat: #b36a00;
+  --c-long: #2f5fd0;
+  --c-shared: #0e8a72;
+  --pos: #0e8a72;
+  --neg: #c4432f;
+  --violet: #6b4fc9;
+  --grain-opacity: 0.06;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --font-display: var(--font-serif), "Iowan Old Style", Georgia, serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--text);
+  background: var(--bg);
+  color: var(--fg);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  overflow-x: clip;
 }
 
-/* Consistent, visible focus treatment for keyboard users. */
+/* Film grain: a single fixed SVG turbulence layer, very low opacity. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 :focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
-/*
- * Respect prefers-reduced-motion globally: kill smooth scrolling and collapse
- * any CSS animation/transition. Framer Motion is handled per-component via
- * `useReducedMotion()` (typewriter, count-up, and entrance variants).
- */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Utilities
+   --------------------------------------------------------------------------- */
+@utility container-x {
+  width: 100%;
+  max-width: 1360px;
+  margin-inline: auto;
+  padding-inline: 20px;
+  @media (min-width: 768px) {
+    padding-inline: 40px;
+  }
+  @media (min-width: 1280px) {
+    padding-inline: 56px;
+  }
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+@utility hairline {
+  border-color: var(--line);
+}
+
+@utility prose-body {
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--fg-2);
+  & strong {
+    color: var(--fg);
+    font-weight: 500;
+  }
+  & a {
+    color: var(--fg);
+    text-decoration: underline;
+    text-decoration-color: var(--line-2);
+    text-underline-offset: 3px;
+  }
+  & a:hover {
+    text-decoration-color: var(--accent);
+  }
+  & code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    color: var(--fg);
+    background: var(--bg-3);
+    padding: 0.08em 0.35em;
+    border-radius: 4px;
+  }
+}
+
+.link-u {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.45s var(--ease-out-expo);
+}
+.link-u:hover,
+.link-u:focus-visible {
+  background-size: 100% 1px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin engineering grid used behind the hero and some figures. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 75%);
+}
+
+/* ---------------------------------------------------------------------------
+   Inference flow diagram
+   --------------------------------------------------------------------------- */
+.inference-flow svg text {
+  font-family: var(--font-mono);
+}
+.flow-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--fg-2);
+}
+.flow-small {
+  font-size: 12px;
+}
+.flow-tiny {
+  font-size: 10.5px;
+}
+.flow-num {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.flow-chip {
+  transition: transform 0.52s var(--ease-out-expo);
+  cursor: default;
+  outline: none;
+}
+.flow-chip:focus-visible rect:first-child {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.flow-chip-enter {
+  animation: chip-in 0.5s var(--ease-out-expo) both;
+}
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+.flow-bar {
+  transition: width 0.45s var(--ease-out-expo);
+}
+.kv-block,
+.gpu-cell {
+  transition:
+    fill-opacity 0.35s ease,
+    fill 0.35s ease,
+    stroke 0.2s ease;
+}
+.flow-done {
+  animation: done-in 0.6s var(--ease-out-expo) both;
+}
+@keyframes done-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Event graph */
+.eg-edge {
+  transition:
+    opacity 0.35s ease,
+    stroke-width 0.35s ease;
+}
+.eg-cycle {
+  stroke-dasharray: 6 6;
+  animation: dash 1.2s linear infinite;
+}
+@keyframes dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+/* Saga flow pulses */
+.pulse-dot {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion preferences
+   --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Scroll reveal: only hidden when JS is running (html.js), see Reveal in components/ui.tsx */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.js .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal {
+    transform: none;
+    transition: opacity 0.3s linear;
+  }
+}
+@media print {
+  .js .reveal {
+    opacity: 1;
+    transform: none;
   }
 }

@@ -1,88 +1,110 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { TopologyBackground } from "@/components/hero-topology-background";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
+import { site } from "@/content/site";
+import Providers from "@/components/providers";
+import SiteHeader from "@/components/site-header";
+import SiteFooter from "@/components/site-footer";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const serif = Instrument_Serif({
   subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-serif",
   display: "swap",
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-/**
- * Production origin. Drives canonical URLs and absolute OpenGraph/Twitter asset
- * paths, and must match the sitemap (`app/sitemap.ts`). Set to the GitHub Pages
- * user-site URL; change this if a custom domain is added later.
- */
-const siteUrl = "https://vsvidhun06-blip.github.io";
-
-const title = "Vidhun Vijayakumar Suja | Software Engineer";
-const description =
-  "MSc Software Engineering graduate specialising in LLM serving infrastructure, concurrent systems, and distributed platforms.";
+const sans = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title,
-  description,
-  applicationName: "Vidhun Suja — Portfolio",
-  authors: [{ name: "Vidhun Vijayakumar Suja" }],
-  creator: "Vidhun Vijayakumar Suja",
-  keywords: [
-    "Vidhun Vijayakumar Suja",
-    "Software Engineer",
-    "LLM Infrastructure",
-    "LLM serving",
-    "Concurrent systems",
-    "Distributed systems",
-    "Formal methods",
-    "Weak memory models",
-  ],
-  alternates: {
-    canonical: "/",
+  metadataBase: new URL(site.url),
+  title: {
+    default: `${site.name} · Software Engineer, AI Infrastructure and Systems Research`,
+    template: `%s · ${site.shortName}`,
   },
+  description: site.description,
+  authors: [{ name: site.name, url: site.url }],
+  keywords: [
+    "LLM inference",
+    "AI infrastructure",
+    "continuous batching",
+    "paged KV cache",
+    "weak memory models",
+    "SMT",
+    "Isabelle/HOL",
+    "systems research",
+    "software engineer Edinburgh",
+  ],
   openGraph: {
     type: "website",
+    url: site.url,
+    siteName: site.name,
+    title: `${site.name} · AI infrastructure and systems research`,
+    description: site.description,
     locale: "en_GB",
-    url: siteUrl,
-    siteName: "Vidhun Suja — Portfolio",
-    title,
-    description,
   },
   twitter: {
     card: "summary_large_image",
-    title,
-    description,
+    title: `${site.name} · AI infrastructure and systems research`,
+    description: site.description,
   },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  alternates: { canonical: "/" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050505",
-  colorScheme: "dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0b0b0c" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f2ec" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+// Runs before paint: apply a stored theme choice. Dark is the default.
+const themeScript = `(function(){document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;
+
+const personJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: site.name,
+  url: site.url,
+  jobTitle: "Software Engineer",
+  address: { "@type": "PostalAddress", addressLocality: "Edinburgh", addressCountry: "GB" },
+  alumniOf: [
+    { "@type": "CollegeOrUniversity", name: "Heriot-Watt University" },
+    { "@type": "CollegeOrUniversity", name: "College of Engineering Muttathara" },
+  ],
+  sameAs: [site.links.github, site.links.linkedin, site.links.leetcode],
+  knowsAbout: ["LLM inference", "AI infrastructure", "Weak memory models", "SMT solving", "Distributed systems"],
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="bg-background text-text antialiased">
-        {/*
-         * Site-wide fixed topology background. The body's own background paints
-         * behind its children, so this canvas (z-0) layers above the page colour
-         * but below all content, which sits in the `relative z-10` wrapper.
-         */}
-        <TopologyBackground />
-        <div className="relative z-10">{children}</div>
+    <html
+      lang="en-GB"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${serif.variable} ${sans.variable} ${mono.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        />
+      </head>
+      <body>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-md focus:bg-[var(--accent)] focus:px-4 focus:py-2 focus:text-[var(--accent-ink)]"
+        >
+          Skip to content
+        </a>
+        <Providers>
+          <SiteHeader />
+          <main id="main">{children}</main>
+          <SiteFooter />
+        </Providers>
       </body>
     </html>
   );

@@ -1,28 +1,33 @@
 {
-  "name": "portfolio-v2",
-  "version": "0.1.0",
+  "name": "vidhun-portfolio",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "npx serve@14.2.4 out -l 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check:copy": "node scripts/check-copy.mjs",
+    "assets": "node scripts/optimise-assets.mjs",
+    "postbuild": "node scripts/flatten-rsc.mjs"
   },
   "dependencies": {
-    "framer-motion": "^12.23.12",
-    "next": "^15.5.4",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "motion": "^14.14.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@tailwindcss/postcss": "^4.1.13",
-    "@types/node": "^20.19.13",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "eslint": "^9.36.0",
-    "eslint-config-next": "^15.5.4",
-    "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2"
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "^16.4.6",
+    "sharp": "^0.35.5",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~5.9.3"
   }
 }

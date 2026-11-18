@@ -1,38 +1,21 @@
-import dynamic from "next/dynamic";
-import { Navbar } from "@/components/navbar";
-import { Hero } from "@/components/hero";
-import { About } from "@/components/about";
-import { Impact } from "@/components/impact";
-import { Research } from "@/components/research";
-import { Experience } from "@/components/experience";
-import { Skills } from "@/components/skills";
-import { Projects } from "@/components/projects";
-import { Footer } from "@/components/footer";
-
-/**
- * The Contact section is below the fold and ships interactive form logic, so it
- * is code-split into its own chunk. SSR stays enabled so the markup is still in
- * the initial HTML for SEO and no-JS users.
- */
-const Contact = dynamic(() =>
-  import("@/components/contact").then((m) => m.Contact),
-);
+import Hero from "@/components/home/hero";
+import { About, AlsoBuilt, AtAGlance, Contact, FeaturedWork, Journey, Research } from "@/components/home/sections";
+import Skills from "@/components/home/skills";
+import LeetCode from "@/components/home/leetcode";
 
 export default function Home() {
   return (
     <>
-      <Navbar />
-      <main>
-        <Hero />
-        <About />
-        <Impact />
-        <Research />
-        <Experience />
-        <Skills />
-        <Projects />
-        <Contact />
-      </main>
-      <Footer />
+      <Hero />
+      <AtAGlance />
+      <About />
+      <FeaturedWork />
+      <Research />
+      <AlsoBuilt />
+      <Skills />
+      <LeetCode />
+      <Journey />
+      <Contact />
     </>
   );
 }
